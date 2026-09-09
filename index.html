@@ -64,9 +64,24 @@
   <button class="btn primary" id="ovB" style="width:100%"></button></div></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script>
-const PALV=[0x3fa9ff,0xffc23e,0xff5d5d,0x54d19a,0xb589ff];
+// Slime karakter renkleri (Blender materyallerinden): mavi, yeşil, pembe, mor, kırmızı
+const PALV=[0x0076ff,0x39d60f,0xf132e7,0x743aff,0xf51f00];
+const SLIME_FILES=['blue','green','pink','purple','red'];
+const SLIME_MODELS={};
 const CIDX={};PALV.forEach((c,i)=>CIDX[c]=i);
+function loadModels(){
+  if(!THREE.GLTFLoader)return Promise.resolve();
+  const loader=new THREE.GLTFLoader();
+  return Promise.all(SLIME_FILES.map((k,i)=>new Promise((res)=>{
+    loader.load('models/slime_'+k+'.glb',g=>{
+      const root=g.scene;
+      root.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=false;}});
+      SLIME_MODELS[i]=root;res();
+    },undefined,err=>{console.error('slime load fail',k,err);res();});
+  })));
+}
 const DIRV={'+x':[1,0,0],'-x':[-1,0,0],'+y':[0,1,0],'-y':[0,-1,0],'+z':[0,0,1],'-z':[0,0,-1]};
 const KEYS=Object.keys(DIRV);
 const TRAYN=7;
@@ -179,12 +194,16 @@ function makeTrophy(color,gold){
   return g;
 }
 function makeSlime(color,gold){
-  const m=new THREE.Mesh(new THREE.BoxGeometry(.82,.82,.82,3,3,3),
-    new THREE.MeshStandardMaterial({color,transparent:true,opacity:.9,roughness:.13,metalness:0,emissive:gold?0xffcc33:color,emissiveIntensity:gold?.3:.16}));
-  m.castShadow=true;
-  const hi=new THREE.Mesh(new THREE.SphereGeometry(.1,12,12),new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.45}));
-  hi.position.set(-.17,.19,.33);m.add(hi);
-  return m;
+  const idx=CIDX[color];const proto=SLIME_MODELS[idx];
+  if(!proto){ // model yüklenmediyse yedek kutu
+    const m=new THREE.Mesh(new THREE.BoxGeometry(.82,.82,.82,3,3,3),
+      new THREE.MeshStandardMaterial({color,transparent:true,opacity:.9,roughness:.13,metalness:0,emissive:gold?0xffcc33:color,emissiveIntensity:gold?.3:.16}));
+    m.castShadow=true;return m;
+  }
+  const g=proto.clone(true);
+  if(gold){g.traverse(o=>{if(o.isMesh&&o.material){const mat=o.material.clone();
+    mat.emissive=new THREE.Color(0xffcc33);mat.emissiveIntensity=(mat.emissiveIntensity||0)+.45;o.material=mat;}});}
+  return g;
 }
 function addBlock(d){
   const mesh=new THREE.Mesh(new THREE.BoxGeometry(.9,.9,.9),new THREE.MeshBasicMaterial({transparent:true,opacity:0,depthWrite:false}));
@@ -330,7 +349,7 @@ function loop(){const now=performance.now();
 document.getElementById('new').onclick=()=>loadLevel(level);
 document.getElementById('next').onclick=()=>loadLevel(level+1);
 document.getElementById('mute').onclick=e=>{muted=!muted;e.target.textContent=muted?'🔇':'🔊';};
-init();
+loadModels().then(init);
 </script>
 
 </body></html>
