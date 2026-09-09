@@ -84,6 +84,8 @@ function loadModels(){
 }
 const DIRV={'+x':[1,0,0],'-x':[-1,0,0],'+y':[0,1,0],'-y':[0,-1,0],'+z':[0,0,1],'-z':[0,0,-1]};
 const KEYS=Object.keys(DIRV);
+// oklar sadece kameranın gördüğü yönlere baksın (tek ok, hep görünür yüzde)
+const VKEYS=['+x','+y','+z'];
 const TRAYN=7;
 const reduce=matchMedia('(prefers-reduced-motion:reduce)').matches;
 const hex=c=>'#'+c.toString(16).padStart(6,'0');
@@ -108,7 +110,26 @@ let actx=null,muted=false;
 function tone(f,d=.14,t='sine',v=.18){if(muted)return;try{actx=actx||new(window.AudioContext||window.webkitAudioContext)();
   const o=actx.createOscillator(),g=actx.createGain();o.type=t;o.frequency.value=f;o.connect(g);g.connect(actx.destination);
   const n=actx.currentTime;g.gain.setValueAtTime(1e-4,n);g.gain.exponentialRampToValueAtTime(v,n+.01);g.gain.exponentialRampToValueAtTime(1e-4,n+d);o.start(n);o.stop(n+d+.02);}catch(e){}}
-const pop=()=>{tone(520+Math.random()*80,.14,'sine',.18);};
+function pop(){if(muted)return;try{actx=actx||new(window.AudioContext||window.webkitAudioContext)();
+  const n=actx.currentTime,f0=360+Math.random()*90;
+  // ıslak gövde: pitch aşağı düşer ("bloop")
+  const o=actx.createOscillator(),g=actx.createGain();o.type='sine';
+  o.frequency.setValueAtTime(f0,n);o.frequency.exponentialRampToValueAtTime(110,n+.18);
+  g.gain.setValueAtTime(1e-4,n);g.gain.exponentialRampToValueAtTime(.5,n+.012);g.gain.exponentialRampToValueAtTime(1e-4,n+.22);
+  o.connect(g);g.connect(actx.destination);o.start(n);o.stop(n+.24);
+  // "tok" tınısı için üst harmonik
+  const o2=actx.createOscillator(),g2=actx.createGain();o2.type='triangle';
+  o2.frequency.setValueAtTime(f0*2.2,n);o2.frequency.exponentialRampToValueAtTime(f0*.9,n+.09);
+  g2.gain.setValueAtTime(1e-4,n);g2.gain.exponentialRampToValueAtTime(.17,n+.008);g2.gain.exponentialRampToValueAtTime(1e-4,n+.12);
+  o2.connect(g2);g2.connect(actx.destination);o2.start(n);o2.stop(n+.14);
+  // ıslak squish: kısa filtreli gürültü
+  const dur=.13,sr=actx.sampleRate,buf=actx.createBuffer(1,Math.floor(sr*dur),sr),ch=buf.getChannelData(0);
+  for(let i=0;i<ch.length;i++)ch[i]=(Math.random()*2-1)*Math.pow(1-i/ch.length,2);
+  const src=actx.createBufferSource();src.buffer=buf;
+  const bp=actx.createBiquadFilter();bp.type='bandpass';bp.frequency.setValueAtTime(1200,n);bp.frequency.exponentialRampToValueAtTime(420,n+dur);bp.Q.value=1.1;
+  const gn=actx.createGain();gn.gain.setValueAtTime(.2,n);gn.gain.exponentialRampToValueAtTime(1e-4,n+dur);
+  src.connect(bp);bp.connect(gn);gn.connect(actx.destination);src.start(n);src.stop(n+dur+.02);
+}catch(e){}}
 const land=()=>tone(620,.09,'sine',.13);
 const clearSnd=(k=0)=>{[0,80,160].forEach((d,i)=>setTimeout(()=>tone((520+k*120)*(1+i*0.18),.18,'triangle',.16),d));};
 const nope=()=>tone(150,.12,'sine',.11);
@@ -139,7 +160,7 @@ function gen(n){
   const live=new Set(pos.map(p=>key(p.x,p.y,p.z))),plan={},order=[];
   while(live.size){const cand=[];
     for(const k of live){const[x,y,z]=k.split(',').map(Number);
-      for(const kk of KEYS){const[dx,dy,dz]=DIRV[kk];let c=true,nx=x+dx,ny=y+dy,nz=z+dz;
+      for(const kk of VKEYS){const[dx,dy,dz]=DIRV[kk];let c=true,nx=x+dx,ny=y+dy,nz=z+dz;
         while(nx>=0&&ny>=0&&nz>=0&&nx<DIM&&ny<DIM&&nz<DIM){if(live.has(key(nx,ny,nz))){c=false;break;}nx+=dx;ny+=dy;nz+=dz;}
         if(c)cand.push([k,kk]);}}
     const p=cand[Math.floor(Math.random()*cand.length)];plan[p[0]]=p[1];order.push(p[0]);live.delete(p[0]);}
@@ -210,12 +231,15 @@ function addBlock(d){
   mesh.position.set(d.x,d.y,d.z);
   const slime=makeSlime(d.color,d.gold);mesh.add(slime);
   const dir=new THREE.Vector3(...DIRV[d.arrow]).normalize();
-  const ax=DIRV[d.arrow].findIndex(v=>v!==0);
-  const pnorms=ax===0?[[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]]:ax===1?[[1,0,0],[-1,0,0],[0,0,1],[0,0,-1]]:[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0]];
-  pnorms.forEach(pv=>{const pn=new THREE.Vector3(...pv);
-    const plane=new THREE.Mesh(new THREE.PlaneGeometry(.58,.58),new THREE.MeshBasicMaterial({map:ARROW_TEX,transparent:true,depthWrite:false}));
-    const zx=new THREE.Vector3().crossVectors(dir,pn).normalize();const y2=new THREE.Vector3().crossVectors(pn,zx).normalize();
-    plane.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(zx,y2,pn));plane.position.copy(pn).multiplyScalar(.47);mesh.add(plane);});
+  // Tek yönlü 3B ok: çıkış yüzünden dışarı bakar. Gövdenin dışında (nefes menzilinin ötesinde)
+  // durduğu için slime hareket etse de içine girip kaybolmaz; blok patlarken okla birlikte uçar.
+  const aMat=new THREE.MeshStandardMaterial({color:0x2a1c10,roughness:.5,metalness:.05});
+  const q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),dir);
+  const head=new THREE.Mesh(new THREE.ConeGeometry(.17,.3,20),aMat);
+  head.quaternion.copy(q);head.position.copy(dir).multiplyScalar(.68);head.castShadow=true;
+  const shaft=new THREE.Mesh(new THREE.CylinderGeometry(.062,.062,.28,14),aMat);
+  shaft.quaternion.copy(q);shaft.position.copy(dir).multiplyScalar(.47);shaft.castShadow=true;
+  mesh.add(head);mesh.add(shaft);
   let shell=null;
   if(d.ice){shell=new THREE.Mesh(new THREE.BoxGeometry(1.04,1.04,1.04),new THREE.MeshStandardMaterial({color:0xbfe3ff,transparent:true,opacity:.55,roughness:.1,metalness:.1}));mesh.add(shell);}
   mesh.scale.setScalar(.01);addTween(mesh.scale,{x:1,y:1,z:1},reduce?1:260,easeBack);
