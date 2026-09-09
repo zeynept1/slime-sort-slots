@@ -123,13 +123,23 @@ function cleanShot(cb){
   g.addColorStop(0,scaleHex(0x3c3e45,m));g.addColorStop(0.75,scaleHex(0x26272b,m));g.addColorStop(1,scaleHex(0x26272b,m));
   ctx.fillStyle=g;ctx.fillRect(0,0,w,h);ctx.drawImage(src,0,0);downloadCanvas(out,cb);
 }
+const SHOT_TARGET=2560; // 2K uzun kenar
 function takeShot(cb){
-  if(renderer)renderer.render(scene,camera); // taze 3D kare
+  const base=Math.max(window.innerWidth,window.innerHeight)||1;
+  const scale=Math.max(1,Math.min(SHOT_TARGET/base,4));
+  // 3D'yi de yüksek çözünürlükte yakala (CSS boyutu değişmez -> ekranda titremez)
+  let oldPR=null;
+  if(renderer){oldPR=renderer.getPixelRatio();
+    renderer.setPixelRatio(Math.min((window.devicePixelRatio||1)*scale,4));
+    renderer.setSize(window.innerWidth,window.innerHeight,false);
+    renderer.render(scene,camera);}
+  const restore=()=>{if(renderer&&oldPR!=null){renderer.setPixelRatio(oldPR);renderer.setSize(window.innerWidth,window.innerHeight,false);}};
+  const finish=ok=>{restore();cb&&cb(ok);};
   if(typeof html2canvas==='function'){
-    html2canvas(document.body,{backgroundColor:null,scale:Math.min(window.devicePixelRatio||1,2),logging:false,
+    html2canvas(document.body,{backgroundColor:null,scale:scale,logging:false,
       ignoreElements:el=>el.id==='panel'||el.id==='gear'||el.id==='toast'})
-      .then(c=>downloadCanvas(c,cb)).catch(e=>{console.error('html2canvas fail',e);cleanShot(cb);});
-  } else cleanShot(cb);
+      .then(c=>downloadCanvas(c,finish)).catch(e=>{console.error('html2canvas fail',e);cleanShot(finish);});
+  } else cleanShot(finish);
 }
 // --- Arayüz (UI) görünürlüğü ---
 const UI={awning:true,hud:true,tray:true,bottom:true};
