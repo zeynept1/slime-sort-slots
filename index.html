@@ -215,7 +215,7 @@ function addBlock(d){
   pnorms.forEach(pv=>{const pn=new THREE.Vector3(...pv);
     const plane=new THREE.Mesh(new THREE.PlaneGeometry(.58,.58),new THREE.MeshBasicMaterial({map:ARROW_TEX,transparent:true,depthWrite:false}));
     const zx=new THREE.Vector3().crossVectors(dir,pn).normalize();const y2=new THREE.Vector3().crossVectors(pn,zx).normalize();
-    plane.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(zx,y2,pn));plane.position.copy(pn).multiplyScalar(.54);mesh.add(plane);});
+    plane.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(zx,y2,pn));plane.position.copy(pn).multiplyScalar(.47);mesh.add(plane);});
   let shell=null;
   if(d.ice){shell=new THREE.Mesh(new THREE.BoxGeometry(1.04,1.04,1.04),new THREE.MeshStandardMaterial({color:0xbfe3ff,transparent:true,opacity:.55,roughness:.1,metalness:.1}));mesh.add(shell);}
   mesh.scale.setScalar(.01);addTween(mesh.scale,{x:1,y:1,z:1},reduce?1:260,easeBack);
@@ -340,15 +340,11 @@ function loop(){const now=performance.now();
   if(!over){timeLeft-=(now-lastNow)/1000;if(timeLeft<=0){timeLeft=0;updateTimer();timeUp();}else updateTimer();}
   lastNow=now;
   runTweens(now);
+  if(!reduce)blocks.forEach(b=>{if(b.removing||!b.slime)return;const t=now*.004+b.phase;
+    b.slime.scale.set(1+Math.sin(t)*.05,1+Math.sin(t+2.1)*.05,1+Math.sin(t+4.2)*.05);});
   const bob=reduce?0:Math.sin(now*.001)*.02;
   const lt=new THREE.Vector3(center.x,center.y+lookOff,center.z);
   camera.position.set(center.x+dist*Math.sin(phi)*Math.cos(theta),center.y+dist*Math.cos(phi)+bob,center.z+dist*Math.sin(phi)*Math.sin(theta));
-  // slime yüzü hep kameraya baksın (yatay eksende billboard) + nefes animasyonu
-  blocks.forEach(b=>{if(b.removing||!b.slime)return;
-    const dx=camera.position.x-b.mesh.position.x,dz=camera.position.z-b.mesh.position.z;
-    b.slime.rotation.y=Math.atan2(dx,dz);
-    if(!reduce){const t=now*.004+b.phase;
-      b.slime.scale.set(1+Math.sin(t)*.05,1+Math.sin(t+2.1)*.05,1+Math.sin(t+4.2)*.05);}});
   camera.lookAt(lt);renderer.render(scene,camera);}
 document.getElementById('new').onclick=()=>loadLevel(level);
 document.getElementById('next').onclick=()=>loadLevel(level+1);
