@@ -66,8 +66,8 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
 <script>
-// Slime karakter renkleri (Blender materyallerinden): mavi, yeşil, pembe, mor, kırmızı
-const PALV=[0x0076ff,0x39d60f,0xf132e7,0x743aff,0xf51f00];
+// Slime renkleri — yumuşatılmış (neon değil) ama canlı: mavi, yeşil, pembe, mor, kırmızı
+const PALV=[0x4a8fcf,0x66b95c,0xcf72b8,0x8f77d1,0xd8604f];
 const SLIME_FILES=['blue','green','pink','purple','red'];
 const SLIME_MODELS={};
 const CIDX={};PALV.forEach((c,i)=>CIDX[c]=i);
@@ -76,8 +76,12 @@ function loadModels(){
   const loader=new THREE.GLTFLoader();
   return Promise.all(SLIME_FILES.map((k,i)=>new Promise((res)=>{
     loader.load('models/slime_'+k+'.glb',g=>{
-      const root=g.scene;
-      root.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=false;}});
+      const root=g.scene;const col=new THREE.Color(PALV[i]);
+      root.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=false;
+        if(o.material){const m=o.material;m.color=col.clone();
+          if(m.emissive)m.emissive=col.clone().multiplyScalar(.04);   // neon parlamayı kıs
+          if('roughness' in m)m.roughness=Math.min(Math.max(m.roughness??.3,.28),.5); // yumuşak parlaklık, slime hissi
+        }}});
       SLIME_MODELS[i]=root;res();
     },undefined,err=>{console.error('slime load fail',k,err);res();});
   })));
