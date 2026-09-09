@@ -107,8 +107,13 @@ let theta=Math.PI*0.25,phi=0.92,dist=11,center=new THREE.Vector3(),lookOff=0;
 let tweens=[],poofs=[],hovered=null;
 
 let actx=null,muted=false;
+let master=null;
+function dest(){if(!master){master=actx.createGain();master.gain.value=2.4;
+  const comp=actx.createDynamicsCompressor();
+  comp.threshold.value=-8;comp.knee.value=6;comp.ratio.value=12;comp.attack.value=.003;comp.release.value=.15;
+  master.connect(comp);comp.connect(actx.destination);}return master;}
 function tone(f,d=.14,t='sine',v=.18){if(muted)return;try{actx=actx||new(window.AudioContext||window.webkitAudioContext)();
-  const o=actx.createOscillator(),g=actx.createGain();o.type=t;o.frequency.value=f;o.connect(g);g.connect(actx.destination);
+  const o=actx.createOscillator(),g=actx.createGain();o.type=t;o.frequency.value=f;o.connect(g);g.connect(dest());
   const n=actx.currentTime;g.gain.setValueAtTime(1e-4,n);g.gain.exponentialRampToValueAtTime(v,n+.01);g.gain.exponentialRampToValueAtTime(1e-4,n+d);o.start(n);o.stop(n+d+.02);}catch(e){}}
 function pop(){if(muted)return;try{actx=actx||new(window.AudioContext||window.webkitAudioContext)();
   const n=actx.currentTime,f0=360+Math.random()*90;
@@ -116,19 +121,19 @@ function pop(){if(muted)return;try{actx=actx||new(window.AudioContext||window.we
   const o=actx.createOscillator(),g=actx.createGain();o.type='sine';
   o.frequency.setValueAtTime(f0,n);o.frequency.exponentialRampToValueAtTime(110,n+.18);
   g.gain.setValueAtTime(1e-4,n);g.gain.exponentialRampToValueAtTime(.5,n+.012);g.gain.exponentialRampToValueAtTime(1e-4,n+.22);
-  o.connect(g);g.connect(actx.destination);o.start(n);o.stop(n+.24);
+  o.connect(g);g.connect(dest());o.start(n);o.stop(n+.24);
   // "tok" tınısı için üst harmonik
   const o2=actx.createOscillator(),g2=actx.createGain();o2.type='triangle';
   o2.frequency.setValueAtTime(f0*2.2,n);o2.frequency.exponentialRampToValueAtTime(f0*.9,n+.09);
   g2.gain.setValueAtTime(1e-4,n);g2.gain.exponentialRampToValueAtTime(.17,n+.008);g2.gain.exponentialRampToValueAtTime(1e-4,n+.12);
-  o2.connect(g2);g2.connect(actx.destination);o2.start(n);o2.stop(n+.14);
+  o2.connect(g2);g2.connect(dest());o2.start(n);o2.stop(n+.14);
   // ıslak squish: kısa filtreli gürültü
   const dur=.13,sr=actx.sampleRate,buf=actx.createBuffer(1,Math.floor(sr*dur),sr),ch=buf.getChannelData(0);
   for(let i=0;i<ch.length;i++)ch[i]=(Math.random()*2-1)*Math.pow(1-i/ch.length,2);
   const src=actx.createBufferSource();src.buffer=buf;
   const bp=actx.createBiquadFilter();bp.type='bandpass';bp.frequency.setValueAtTime(1200,n);bp.frequency.exponentialRampToValueAtTime(420,n+dur);bp.Q.value=1.1;
   const gn=actx.createGain();gn.gain.setValueAtTime(.2,n);gn.gain.exponentialRampToValueAtTime(1e-4,n+dur);
-  src.connect(bp);bp.connect(gn);gn.connect(actx.destination);src.start(n);src.stop(n+dur+.02);
+  src.connect(bp);bp.connect(gn);gn.connect(dest());src.start(n);src.stop(n+dur+.02);
 }catch(e){}}
 const land=()=>tone(620,.09,'sine',.13);
 const clearSnd=(k=0)=>{[0,80,160].forEach((d,i)=>setTimeout(()=>tone((520+k*120)*(1+i*0.18),.18,'triangle',.16),d));};
@@ -231,19 +236,14 @@ function addBlock(d){
   mesh.position.set(d.x,d.y,d.z);
   const slime=makeSlime(d.color,d.gold);mesh.add(slime);
   const dir=new THREE.Vector3(...DIRV[d.arrow]).normalize();
-  // Tek yönlü 3B ok: çıkış yüzünden dışarı bakar. Gövdenin dışında (nefes menzilinin ötesinde)
-  // durduğu için slime hareket etse de içine girip kaybolmaz; blok patlarken okla birlikte uçar.
-  const aMat=new THREE.MeshStandardMaterial({color:0x2a1c10,roughness:.5,metalness:.05});
-  const q=new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0,1,0),dir);
-  const head=new THREE.Mesh(new THREE.ConeGeometry(.17,.3,20),aMat);
-  head.quaternion.copy(q);head.position.copy(dir).multiplyScalar(.68);head.castShadow=true;
-  const shaft=new THREE.Mesh(new THREE.CylinderGeometry(.062,.062,.28,14),aMat);
-  shaft.quaternion.copy(q);shaft.position.copy(dir).multiplyScalar(.47);shaft.castShadow=true;
-  mesh.add(head);mesh.add(shaft);
+  // Tek 2B ok: gövdenin dışında (nefes menzilinin ötesinde) yüzer, hep kameraya bakar,
+  // çıkış yönünü gösterir. Slime hareket etse de içine girip kaybolmaz; blok patlarken okla uçar.
+  const arrowSprite=new THREE.Sprite(new THREE.SpriteMaterial({map:ARROW_TEX,transparent:true,depthTest:true,depthWrite:false}));
+  arrowSprite.scale.set(.5,.5,1);arrowSprite.position.copy(dir).multiplyScalar(.66);mesh.add(arrowSprite);
   let shell=null;
   if(d.ice){shell=new THREE.Mesh(new THREE.BoxGeometry(1.04,1.04,1.04),new THREE.MeshStandardMaterial({color:0xbfe3ff,transparent:true,opacity:.55,roughness:.1,metalness:.1}));mesh.add(shell);}
   mesh.scale.setScalar(.01);addTween(mesh.scale,{x:1,y:1,z:1},reduce?1:260,easeBack);
-  scene.add(mesh);const b={mesh,slime,phase:Math.random()*6.28,x:d.x,y:d.y,z:d.z,arrow:d.arrow,color:d.color,ice:d.ice,gold:d.gold,shell,removing:false};
+  scene.add(mesh);const b={mesh,slime,arrowSprite,arrowDir:dir,phase:Math.random()*6.28,x:d.x,y:d.y,z:d.z,arrow:d.arrow,color:d.color,ice:d.ice,gold:d.gold,shell,removing:false};
   blocks.push(b);occ.set(d.x+','+d.y+','+d.z,b);
 }
 function clearPath(b){const[dx,dy,dz]=DIRV[b.arrow];let nx=b.x+dx,ny=b.y+dy,nz=b.z+dz;
@@ -369,7 +369,14 @@ function loop(){const now=performance.now();
   const bob=reduce?0:Math.sin(now*.001)*.02;
   const lt=new THREE.Vector3(center.x,center.y+lookOff,center.z);
   camera.position.set(center.x+dist*Math.sin(phi)*Math.cos(theta),center.y+dist*Math.cos(phi)+bob,center.z+dist*Math.sin(phi)*Math.sin(theta));
-  camera.lookAt(lt);renderer.render(scene,camera);}
+  camera.lookAt(lt);camera.updateMatrixWorld();
+  // 2B oku ekranda çıkış yönüne döndür
+  const asp=camera.aspect;
+  blocks.forEach(b=>{if(!b.arrowSprite)return;
+    const A=b.mesh.position.clone().project(camera);
+    const B=b.mesh.position.clone().add(b.arrowDir).project(camera);
+    b.arrowSprite.material.rotation=Math.atan2(-(B.x-A.x)*asp,(B.y-A.y));});
+  renderer.render(scene,camera);}
 document.getElementById('new').onclick=()=>loadLevel(level);
 document.getElementById('next').onclick=()=>loadLevel(level+1);
 document.getElementById('mute').onclick=e=>{muted=!muted;e.target.textContent=muted?'🔇':'🔊';};
