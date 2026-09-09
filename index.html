@@ -239,7 +239,7 @@ function addBlock(d){
   // Tek 2B ok: gövdenin dışında (nefes menzilinin ötesinde) yüzer, hep kameraya bakar,
   // çıkış yönünü gösterir. Slime hareket etse de içine girip kaybolmaz; blok patlarken okla uçar.
   const arrowSprite=new THREE.Sprite(new THREE.SpriteMaterial({map:ARROW_TEX,transparent:true,depthTest:true,depthWrite:false}));
-  arrowSprite.scale.set(.5,.5,1);arrowSprite.position.copy(dir).multiplyScalar(.66);mesh.add(arrowSprite);
+  arrowSprite.scale.set(.46,.46,1);arrowSprite.position.copy(dir).multiplyScalar(.47);slime.add(arrowSprite);
   let shell=null;
   if(d.ice){shell=new THREE.Mesh(new THREE.BoxGeometry(1.04,1.04,1.04),new THREE.MeshStandardMaterial({color:0xbfe3ff,transparent:true,opacity:.55,roughness:.1,metalness:.1}));mesh.add(shell);}
   mesh.scale.setScalar(.01);addTween(mesh.scale,{x:1,y:1,z:1},reduce?1:260,easeBack);
