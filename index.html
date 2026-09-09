@@ -236,14 +236,18 @@ function addBlock(d){
   mesh.position.set(d.x,d.y,d.z);
   const slime=makeSlime(d.color,d.gold);mesh.add(slime);
   const dir=new THREE.Vector3(...DIRV[d.arrow]).normalize();
-  // Tek 2B ok: gövdenin dışında (nefes menzilinin ötesinde) yüzer, hep kameraya bakar,
-  // çıkış yönünü gösterir. Slime hareket etse de içine girip kaybolmaz; blok patlarken okla uçar.
-  const arrowSprite=new THREE.Sprite(new THREE.SpriteMaterial({map:ARROW_TEX,transparent:true,depthTest:true,depthWrite:false}));
-  arrowSprite.scale.set(.46,.46,1);arrowSprite.position.copy(dir).multiplyScalar(.47);slime.add(arrowSprite);
+  // İlk (gözlü) versiyondaki gibi: ok slime yüzeyine yatık/yapışık, çıkış yönünü gösterir.
+  // Gövdeye bağlı (slime.add) → nefes alsa/hareket etse de yüzeye yapışık kalır, hep en az biri görünür.
+  const ax=DIRV[d.arrow].findIndex(v=>v!==0);
+  const pnorms=ax===0?[[0,1,0],[0,-1,0],[0,0,1],[0,0,-1]]:ax===1?[[1,0,0],[-1,0,0],[0,0,1],[0,0,-1]]:[[1,0,0],[-1,0,0],[0,1,0],[0,-1,0]];
+  pnorms.forEach(pv=>{const pn=new THREE.Vector3(...pv);
+    const plane=new THREE.Mesh(new THREE.PlaneGeometry(.56,.56),new THREE.MeshBasicMaterial({map:ARROW_TEX,transparent:true,depthWrite:false}));
+    const zx=new THREE.Vector3().crossVectors(dir,pn).normalize();const y2=new THREE.Vector3().crossVectors(pn,zx).normalize();
+    plane.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(zx,y2,pn));plane.position.copy(pn).multiplyScalar(.5);slime.add(plane);});
   let shell=null;
   if(d.ice){shell=new THREE.Mesh(new THREE.BoxGeometry(1.04,1.04,1.04),new THREE.MeshStandardMaterial({color:0xbfe3ff,transparent:true,opacity:.55,roughness:.1,metalness:.1}));mesh.add(shell);}
   mesh.scale.setScalar(.01);addTween(mesh.scale,{x:1,y:1,z:1},reduce?1:260,easeBack);
-  scene.add(mesh);const b={mesh,slime,arrowSprite,arrowDir:dir,phase:Math.random()*6.28,x:d.x,y:d.y,z:d.z,arrow:d.arrow,color:d.color,ice:d.ice,gold:d.gold,shell,removing:false};
+  scene.add(mesh);const b={mesh,slime,phase:Math.random()*6.28,x:d.x,y:d.y,z:d.z,arrow:d.arrow,color:d.color,ice:d.ice,gold:d.gold,shell,removing:false};
   blocks.push(b);occ.set(d.x+','+d.y+','+d.z,b);
 }
 function clearPath(b){const[dx,dy,dz]=DIRV[b.arrow];let nx=b.x+dx,ny=b.y+dy,nz=b.z+dz;
@@ -369,14 +373,7 @@ function loop(){const now=performance.now();
   const bob=reduce?0:Math.sin(now*.001)*.02;
   const lt=new THREE.Vector3(center.x,center.y+lookOff,center.z);
   camera.position.set(center.x+dist*Math.sin(phi)*Math.cos(theta),center.y+dist*Math.cos(phi)+bob,center.z+dist*Math.sin(phi)*Math.sin(theta));
-  camera.lookAt(lt);camera.updateMatrixWorld();
-  // 2B oku ekranda çıkış yönüne döndür
-  const asp=camera.aspect;
-  blocks.forEach(b=>{if(!b.arrowSprite)return;
-    const A=b.mesh.position.clone().project(camera);
-    const B=b.mesh.position.clone().add(b.arrowDir).project(camera);
-    b.arrowSprite.material.rotation=Math.atan2(-(B.x-A.x)*asp,(B.y-A.y));});
-  renderer.render(scene,camera);}
+  camera.lookAt(lt);renderer.render(scene,camera);}
 document.getElementById('new').onclick=()=>loadLevel(level);
 document.getElementById('next').onclick=()=>loadLevel(level+1);
 document.getElementById('mute').onclick=e=>{muted=!muted;e.target.textContent=muted?'🔇':'🔊';};
