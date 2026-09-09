@@ -66,6 +66,7 @@
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/three@0.128.0/examples/js/loaders/GLTFLoader.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
 <script>
 // Slime renkleri — yumuşatılmış (neon değil) ama canlı: mavi, yeşil, pembe, mor, kırmızı
 const PALV=[0x4a8fcf,0x66b95c,0xcf72b8,0x8f77d1,0xd8604f];
@@ -103,19 +104,32 @@ function scaleHex(hex,m){const r=Math.min(255,((hex>>16&255)*m)|0),g=Math.min(25
   return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1);}
 function applyBg(){const m=SETTINGS.bg;
   document.body.style.background='radial-gradient(120% 90% at 50% 40%,'+scaleHex(0x3c3e45,m)+','+scaleHex(0x26272b,m)+' 75%)';}
-// --- Ekran görüntüsü: 3D sahne + arka plan (HUD/panel dahil değil) -> PNG ---
-function takeShot(cb){
+// --- Ekran görüntüsü -> PNG ---
+// UI açıksa (toggle'lar) HUD dahil edilir; hepsi kapalıysa temiz 3D sahne kalır.
+// Ayar paneli / dişli / toast her zaman hariç.
+function downloadCanvas(c,cb){
+  const dl=url=>{const a=document.createElement('a');a.href=url;a.download='slime-sort-'+Date.now()+'.png';
+    document.body.appendChild(a);a.click();a.remove();cb&&cb(true);};
+  try{c.toBlob(b=>{if(!b){cb&&cb(false);return;}const u=URL.createObjectURL(b);dl(u);setTimeout(()=>URL.revokeObjectURL(u),1500);},'image/png');}
+  catch(e){try{dl(c.toDataURL('image/png'));}catch(e2){cb&&cb(false);}}
+}
+// Yedek: sadece 3D sahne + arka plan gradyanı (html2canvas yoksa)
+function cleanShot(cb){
   if(!renderer){cb&&cb(false);return;}
-  renderer.render(scene,camera); // taze kare garanti
+  renderer.render(scene,camera);
   const src=renderer.domElement,w=src.width,h=src.height,m=SETTINGS.bg;
   const out=document.createElement('canvas');out.width=w;out.height=h;const ctx=out.getContext('2d');
   const g=ctx.createRadialGradient(w*0.5,h*0.4,Math.min(w,h)*0.08,w*0.5,h*0.4,Math.max(w,h)*0.95);
   g.addColorStop(0,scaleHex(0x3c3e45,m));g.addColorStop(0.75,scaleHex(0x26272b,m));g.addColorStop(1,scaleHex(0x26272b,m));
-  ctx.fillStyle=g;ctx.fillRect(0,0,w,h);ctx.drawImage(src,0,0);
-  const done=url=>{const a=document.createElement('a');a.href=url;a.download='slime-sort-'+Date.now()+'.png';
-    document.body.appendChild(a);a.click();a.remove();cb&&cb(true);};
-  try{out.toBlob(b=>{if(!b){cb&&cb(false);return;}const u=URL.createObjectURL(b);done(u);setTimeout(()=>URL.revokeObjectURL(u),1500);},'image/png');}
-  catch(e){try{done(out.toDataURL('image/png'));}catch(e2){cb&&cb(false);}}
+  ctx.fillStyle=g;ctx.fillRect(0,0,w,h);ctx.drawImage(src,0,0);downloadCanvas(out,cb);
+}
+function takeShot(cb){
+  if(renderer)renderer.render(scene,camera); // taze 3D kare
+  if(typeof html2canvas==='function'){
+    html2canvas(document.body,{backgroundColor:null,scale:Math.min(window.devicePixelRatio||1,2),logging:false,
+      ignoreElements:el=>el.id==='panel'||el.id==='gear'||el.id==='toast'})
+      .then(c=>downloadCanvas(c,cb)).catch(e=>{console.error('html2canvas fail',e);cleanShot(cb);});
+  } else cleanShot(cb);
 }
 // --- Arayüz (UI) görünürlüğü ---
 const UI={awning:true,hud:true,tray:true,bottom:true};
