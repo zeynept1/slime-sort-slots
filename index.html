@@ -68,6 +68,10 @@
 <script>
 // Slime renkleri — yumuşatılmış (neon değil) ama canlı: mavi, yeşil, pembe, mor, kırmızı
 const PALV=[0x4a8fcf,0x66b95c,0xcf72b8,0x8f77d1,0xd8604f];
+// Görsel "kaplama" renkleri (ayar panelinden değişir; PALV mantıksal kimlik olarak sabit kalır)
+let SKIN=PALV.slice();
+// Canlı ayarlanabilir sahne/malzeme değerleri (ayar paneli bunları oynatır)
+const SETTINGS={hemi:.95,dir:.85,az:53,elev:52,shadow:true,shadowSoft:3,roughness:.36,metalness:0,emissive:.05,bg:1};
 const SLIME_FILES=['blue','green','pink','purple','red'];
 const SLIME_MODELS={};
 const CIDX={};PALV.forEach((c,i)=>CIDX[c]=i);
@@ -76,16 +80,28 @@ function loadModels(){
   const loader=new THREE.GLTFLoader();
   return Promise.all(SLIME_FILES.map((k,i)=>new Promise((res)=>{
     loader.load('models/slime_'+k+'.glb',g=>{
-      const root=g.scene;const col=new THREE.Color(PALV[i]);
-      root.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=false;
-        if(o.material){const m=o.material;m.color=col.clone();
-          if(m.emissive)m.emissive=col.clone().multiplyScalar(.04);   // neon parlamayı kıs
-          if('roughness' in m)m.roughness=Math.min(Math.max(m.roughness??.3,.28),.5); // yumuşak parlaklık, slime hissi
-        }}});
-      SLIME_MODELS[i]=root;res();
+      const root=g.scene;
+      root.traverse(o=>{if(o.isMesh){o.castShadow=true;o.receiveShadow=false;}});
+      SLIME_MODELS[i]=root;applyMaterial(i);res();
     },undefined,err=>{console.error('slime load fail',k,err);res();});
   })));
 }
+// --- Canlı ayar uygulayıcıları (ayar paneli çağırır) ---
+function applyMaterial(i){const root=SLIME_MODELS[i];if(!root)return;const col=new THREE.Color(SKIN[i]);
+  root.traverse(o=>{if(o.isMesh&&o.material){const m=o.material;m.color=col.clone();
+    if(m.emissive)m.emissive=col.clone().multiplyScalar(SETTINGS.emissive);
+    if('roughness' in m)m.roughness=SETTINGS.roughness;
+    if('metalness' in m)m.metalness=SETTINGS.metalness;m.needsUpdate=true;}});}
+function applyMaterials(){for(let i=0;i<SLIME_FILES.length;i++)applyMaterial(i);}
+function applyLights(){if(!hemiLight)return;hemiLight.intensity=SETTINGS.hemi;dirLight.intensity=SETTINGS.dir;
+  const e=SETTINGS.elev*Math.PI/180,a=SETTINGS.az*Math.PI/180,r=16;
+  dirLight.position.set(r*Math.cos(e)*Math.cos(a),r*Math.sin(e),r*Math.cos(e)*Math.sin(a));
+  dirLight.castShadow=SETTINGS.shadow;dirLight.shadow.radius=SETTINGS.shadowSoft;
+  if(renderer)renderer.shadowMap.needsUpdate=true;}
+function scaleHex(hex,m){const r=Math.min(255,((hex>>16&255)*m)|0),g=Math.min(255,((hex>>8&255)*m)|0),b=Math.min(255,((hex&255)*m)|0);
+  return '#'+((1<<24)+(r<<16)+(g<<8)+b).toString(16).slice(1);}
+function applyBg(){const m=SETTINGS.bg;
+  document.body.style.background='radial-gradient(120% 90% at 50% 40%,'+scaleHex(0x3c3e45,m)+','+scaleHex(0x26272b,m)+' 75%)';}
 const DIRV={'+x':[1,0,0],'-x':[-1,0,0],'+y':[0,1,0],'-y':[0,-1,0],'+z':[0,0,1],'-z':[0,0,-1]};
 const KEYS=Object.keys(DIRV);
 // oklar sadece kameranın gördüğü yönlere baksın (tek ok, hep görünür yüzde)
@@ -100,7 +116,7 @@ function makeArrowTex(){const c=document.createElement('canvas');c.width=c.heigh
   const t=new THREE.CanvasTexture(c);t.anisotropy=4;return t;}
 let ARROW_TEX;
 
-let scene,camera,renderer,ray;
+let scene,camera,renderer,ray,hemiLight,dirLight;
 let DIM=3,level=0,blocks=[],occ=new Map();
 let tray=[],cells=[],collectedColors=new Set(),cubeCount=0,collectedCount=0;
 let coins=0,combo=0,lastClear=0,comboMax=0,maxTray=0,over=false;
@@ -150,9 +166,10 @@ function init(){
   camera=new THREE.PerspectiveCamera(42,innerWidth/innerHeight,.1,100);
   renderer=new THREE.WebGLRenderer({antialias:true,alpha:true});renderer.setPixelRatio(Math.min(devicePixelRatio,2));
   renderer.setSize(innerWidth,innerHeight);renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;stage.appendChild(renderer.domElement);
-  scene.add(new THREE.HemisphereLight(0xfff2dd,0xd8b48a,0.95));
+  hemiLight=new THREE.HemisphereLight(0xfff2dd,0xd8b48a,0.95);scene.add(hemiLight);
   const dl=new THREE.DirectionalLight(0xfff0d8,.85);dl.position.set(6,13,8);dl.castShadow=true;dl.shadow.mapSize.set(1024,1024);
-  const d=14;Object.assign(dl.shadow.camera,{left:-d,right:d,top:d,bottom:-d,near:1,far:50});scene.add(dl);
+  const d=14;Object.assign(dl.shadow.camera,{left:-d,right:d,top:d,bottom:-d,near:1,far:50});scene.add(dl);dirLight=dl;
+  applyLights();applyBg();
   ARROW_TEX=makeArrowTex();ray=new THREE.Raycaster();bindInput();addEventListener('resize',onResize);
   loadLevel(0);renderer.setAnimationLoop(loop);
 }
@@ -200,7 +217,7 @@ function buildTray(){const box=document.getElementById('tray');box.innerHTML='';
 function renderTray(popIndex){
   const sorted=tray.slice().sort((a,b)=>CIDX[a.color]-CIDX[b.color]);
   cells.forEach((cell,i)=>{cell.innerHTML='';cell.classList.remove('pop','clear');
-    if(sorted[i]){const it=document.createElement('div');it.className='item';it.style.background=hex(sorted[i].color);
+    if(sorted[i]){const it=document.createElement('div');it.className='item';it.style.background=hex(SKIN[CIDX[sorted[i].color]]);
       if(sorted[i].gold)it.style.boxShadow='inset 0 0 0 3px #ffe08a,inset 0 -3px 5px #0003';cell.appendChild(it);}});
 }
 function starShape(){const s=new THREE.Shape();const sp=5,ro=0.12,ri=0.052;
@@ -275,12 +292,12 @@ function tap(b){
     addTween(b.slime.scale,stretch,reduce?1:240,x=>x);
     addTween(b.mesh.scale,{x:.01,y:.01,z:.01},reduce?1:240,x=>x*x,()=>scene.remove(b.mesh));
   });
-  poof(from,b.gold?0xffdf7a:b.color);
+  poof(from,b.gold?0xffdf7a:SKIN[CIDX[b.color]]);
   blocks=blocks.filter(x=>x!==b);
   flyTo(b.color,b.gold,sc.x,sc.y);
 }
 function flyTo(color,gold,fx,fy){
-  const d=document.createElement('div');d.className='flydot';d.style.background=hex(color);d.style.left=fx+'px';d.style.top=fy+'px';
+  const d=document.createElement('div');d.className='flydot';d.style.background=hex(SKIN[CIDX[color]]);d.style.left=fx+'px';d.style.top=fy+'px';
   if(gold)d.style.boxShadow='0 0 0 3px #ffe08a,0 4px 12px #0005';document.body.appendChild(d);
   const tray=document.getElementById('tray').getBoundingClientRect();const tx=tray.left+tray.width/2,ty=tray.top+tray.height/2;
   requestAnimationFrame(()=>{d.style.left=tx+'px';d.style.top=ty+'px';d.style.transform='translate(-50%,-50%) scale(.5)';d.style.opacity='.4';});
@@ -347,7 +364,7 @@ function clearHover(){hovered=null;renderer.domElement.style.cursor='';}
 
 function stars(){let s=1;if(comboMax>=2)s++;if(maxTray<=TRAYN-2)s++;return s;}
 function confetti(){for(let i=0;i<40;i++){const d=document.createElement('div');d.className='confetti';
-  d.style.background=hex(PALV[i%PALV.length]);d.style.left=(20+Math.random()*60)+'%';d.style.top='-20px';
+  d.style.background=hex(SKIN[i%SKIN.length]);d.style.left=(20+Math.random()*60)+'%';d.style.top='-20px';
   document.body.appendChild(d);const dur=1200+Math.random()*900;const x=(Math.random()-.5)*200;
   d.animate([{transform:'translate(0,0) rotate(0)',opacity:1},{transform:`translate(${x}px,${innerHeight+60}px) rotate(${720*Math.random()}deg)`,opacity:.9}],{duration:dur,easing:'cubic-bezier(.3,.6,.4,1)'});
   setTimeout(()=>d.remove(),dur);}}
@@ -381,7 +398,109 @@ function loop(){const now=performance.now();
 document.getElementById('new').onclick=()=>loadLevel(level);
 document.getElementById('next').onclick=()=>loadLevel(level+1);
 document.getElementById('mute').onclick=e=>{muted=!muted;e.target.textContent=muted?'🔇':'🔊';};
-loadModels().then(init);
+
+// ---------- Canlı Ayar Paneli (renk / ışık / gölge / malzeme) ----------
+const DEFAULTS={settings:JSON.parse(JSON.stringify(SETTINGS)),skin:PALV.slice()};
+function buildPanel(){
+  const css=`
+  #gear{position:fixed;top:74px;right:16px;z-index:11}
+  #panel{position:fixed;top:0;right:-340px;height:100%;width:300px;max-width:86vw;z-index:20;
+    background:#fffdf7f2;backdrop-filter:blur(6px);box-shadow:-8px 0 30px #0003;border-left:2px solid #ecd3aa;
+    transition:right .28s cubic-bezier(.4,0,.2,1);overflow-y:auto;overflow-x:hidden;
+    font-family:inherit;color:#5a3f27;padding:14px 16px 30px;box-sizing:border-box}
+  #panel.open{right:0}
+  #panel h3{margin:14px 0 6px;font-size:12px;letter-spacing:1px;text-transform:uppercase;color:#c8892f;border-bottom:1px solid #eddcc0;padding-bottom:4px}
+  #panel .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:4px}
+  #panel .top b{font-size:17px;color:#c86a3d}
+  #panel .x{border:0;background:#f0e0c4;border-radius:9px;width:30px;height:30px;font-size:16px;color:#5a3f27;cursor:pointer}
+  .ctl{margin:9px 0}
+  .ctl label{display:flex;justify-content:space-between;font-size:12.5px;font-weight:600;margin-bottom:3px}
+  .ctl label span{color:#b07a3a;font-variant-numeric:tabular-nums}
+  .ctl input[type=range]{width:100%;accent-color:#e8663f;margin:0}
+  .cols{display:flex;gap:8px;flex-wrap:wrap}
+  .cols .cw{display:flex;flex-direction:column;align-items:center;gap:3px;font-size:11px;font-weight:600}
+  .cols input[type=color]{width:40px;height:34px;border:2px solid #e4c79a;border-radius:9px;background:none;cursor:pointer;padding:0}
+  .rowbtn{display:flex;gap:8px;margin-top:14px}
+  .rowbtn button{flex:1;border:0;border-radius:12px;padding:10px;font-family:inherit;font-weight:700;font-size:13px;cursor:pointer;color:#fff;background:#e8663f}
+  .rowbtn button.sec{background:#f0e0c4;color:#5a3f27}
+  .tgl{display:flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;margin:9px 0}
+  .tgl input{width:18px;height:18px;accent-color:#e8663f}
+  #toast{position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);z-index:30;background:#5a3f27;color:#fff6e6;
+    padding:9px 18px;border-radius:999px;font-size:13px;font-weight:600;opacity:0;transition:.25s;pointer-events:none}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}`;
+  const st=document.createElement('style');st.textContent=css;document.head.appendChild(st);
+
+  const gear=document.createElement('button');gear.id='gear';gear.className='iconbtn';gear.textContent='⚙';document.body.appendChild(gear);
+  const panel=document.createElement('div');panel.id='panel';document.body.appendChild(panel);
+  const toast=document.createElement('div');toast.id='toast';document.body.appendChild(toast);
+  let toastT;const showToast=m=>{toast.textContent=m;toast.classList.add('show');clearTimeout(toastT);toastT=setTimeout(()=>toast.classList.remove('show'),1400);};
+
+  const slider=(key,label,min,max,step,fmt,onCh)=>{
+    const w=document.createElement('div');w.className='ctl';
+    const val=SETTINGS[key];
+    w.innerHTML=`<label>${label}<span></span></label>`;
+    const inp=document.createElement('input');inp.type='range';inp.min=min;inp.max=max;inp.step=step;inp.value=val;
+    const sp=w.querySelector('span');sp.textContent=fmt(val);
+    inp.oninput=()=>{SETTINGS[key]=parseFloat(inp.value);sp.textContent=fmt(SETTINGS[key]);onCh();};
+    w.appendChild(inp);inp._key=key;inp._sp=sp;inp._fmt=fmt;return w;};
+
+  const h=t=>{const e=document.createElement('h3');e.textContent=t;panel.appendChild(e);return e;};
+
+  panel.innerHTML=`<div class="top"><b>⚙ Ayarlar</b><button class="x" id="pClose">✕</button></div>`;
+
+  h('Işık');
+  panel.appendChild(slider('hemi','Ortam ışığı',0,2,.01,v=>v.toFixed(2),applyLights));
+  panel.appendChild(slider('dir','Yönlü ışık',0,2,.01,v=>v.toFixed(2),applyLights));
+  panel.appendChild(slider('az','Işık yönü (yatay)',0,360,1,v=>v.toFixed(0)+'°',applyLights));
+  panel.appendChild(slider('elev','Işık yüksekliği',5,89,1,v=>v.toFixed(0)+'°',applyLights));
+
+  h('Gölge');
+  const tg=document.createElement('div');tg.className='tgl';
+  tg.innerHTML='<input type="checkbox" id="shTg"><label for="shTg" style="margin:0">Gölge açık</label>';
+  tg.querySelector('#shTg').checked=SETTINGS.shadow;
+  tg.querySelector('#shTg').onchange=e=>{SETTINGS.shadow=e.target.checked;applyLights();};
+  panel.appendChild(tg);
+  panel.appendChild(slider('shadowSoft','Gölge yumuşaklığı',0,12,.5,v=>v.toFixed(1),applyLights));
+
+  h('Malzeme');
+  panel.appendChild(slider('roughness','Pürüzlülük',0,1,.01,v=>v.toFixed(2),applyMaterials));
+  panel.appendChild(slider('metalness','Metaliklik',0,1,.01,v=>v.toFixed(2),applyMaterials));
+  panel.appendChild(slider('emissive','İç parlama',0,.4,.005,v=>v.toFixed(3),applyMaterials));
+
+  h('Arka plan');
+  panel.appendChild(slider('bg','Parlaklık',.3,1.6,.01,v=>v.toFixed(2),applyBg));
+
+  h('Renkler');
+  const cols=document.createElement('div');cols.className='cols';
+  const names=['Mavi','Yeşil','Pembe','Mor','Kırmızı'];
+  const colInputs=[];
+  SLIME_FILES.forEach((k,i)=>{const cw=document.createElement('div');cw.className='cw';
+    const ci=document.createElement('input');ci.type='color';ci.value=hex(SKIN[i]);
+    ci.oninput=()=>{SKIN[i]=parseInt(ci.value.slice(1),16);applyMaterial(i);renderTray();};
+    cw.appendChild(ci);cw.appendChild(document.createTextNode(names[i]));cols.appendChild(cw);colInputs.push(ci);});
+  panel.appendChild(cols);
+
+  const rb=document.createElement('div');rb.className='rowbtn';
+  rb.innerHTML='<button class="sec" id="pReset">↺ Sıfırla</button><button id="pCopy">📋 Kopyala</button>';
+  panel.appendChild(rb);
+
+  const refresh=()=>{panel.querySelectorAll('input[type=range]').forEach(inp=>{
+      inp.value=SETTINGS[inp._key];inp._sp.textContent=inp._fmt(SETTINGS[inp._key]);});
+    tg.querySelector('#shTg').checked=SETTINGS.shadow;
+    colInputs.forEach((ci,i)=>ci.value=hex(SKIN[i]));};
+
+  gear.onclick=()=>panel.classList.toggle('open');
+  panel.querySelector('#pClose').onclick=()=>panel.classList.remove('open');
+  panel.querySelector('#pReset').onclick=()=>{
+    Object.assign(SETTINGS,JSON.parse(JSON.stringify(DEFAULTS.settings)));SKIN=DEFAULTS.skin.slice();
+    applyLights();applyMaterials();applyBg();renderTray();refresh();showToast('Varsayılana döndü');};
+  panel.querySelector('#pCopy').onclick=()=>{
+    const out={...SETTINGS,colors:SKIN.map(c=>hex(c))};const txt=JSON.stringify(out,null,2);
+    (navigator.clipboard?navigator.clipboard.writeText(txt):Promise.reject()).then(()=>showToast('Ayarlar kopyalandı ✓'),
+      ()=>{console.log(txt);showToast('Konsola yazıldı');});};
+}
+
+loadModels().then(()=>{init();buildPanel();});
 </script>
 
 </body></html>
