@@ -71,9 +71,9 @@
 // Slime renkleri — yumuşatılmış (neon değil) ama canlı: mavi, yeşil, pembe, mor, kırmızı
 const PALV=[0x4a8fcf,0x66b95c,0xcf72b8,0x8f77d1,0xd8604f];
 // Görsel "kaplama" renkleri (ayar panelinden değişir; PALV mantıksal kimlik olarak sabit kalır)
-let SKIN=PALV.slice();
+let SKIN=[0x2385e1,0x4db941,0xbc499f,0x6844ca,0xbd4c3d];
 // Canlı ayarlanabilir sahne/malzeme değerleri (ayar paneli bunları oynatır)
-const SETTINGS={hemi:.95,dir:.85,az:53,elev:52,shadow:true,shadowSoft:3,roughness:.36,metalness:0,emissive:.05,bg:1};
+const SETTINGS={hemi:.55,dir:.89,az:52,elev:52,shadow:true,shadowSoft:3,roughness:.37,metalness:0,emissive:.04,bg:1.09};
 const SLIME_FILES=['blue','green','pink','purple','red'];
 const SLIME_MODELS={};
 const CIDX={};PALV.forEach((c,i)=>CIDX[c]=i);
@@ -442,7 +442,7 @@ document.getElementById('next').onclick=()=>loadLevel(level+1);
 document.getElementById('mute').onclick=e=>{muted=!muted;e.target.textContent=muted?'🔇':'🔊';};
 
 // ---------- Canlı Ayar Paneli (renk / ışık / gölge / malzeme) ----------
-const DEFAULTS={settings:JSON.parse(JSON.stringify(SETTINGS)),skin:PALV.slice()};
+const DEFAULTS={settings:JSON.parse(JSON.stringify(SETTINGS)),skin:SKIN.slice()};
 function buildPanel(){
   const css=`
   #gear{position:fixed;top:74px;right:16px;z-index:11}
